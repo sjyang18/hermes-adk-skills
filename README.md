@@ -50,15 +50,20 @@ Enterprise Market Intelligence Agent providing:
 
 ## Usage
 
-These skills are designed to be installed in Hermes Agent's skills directory:
+Tell your Hermes agent:
 
-```bash
-# Copy to your Hermes skills directory
-cp -r deep-search/ ~/.hermes/skills/research/
-cp -r economic-research/ ~/.hermes/skills/research/
-```
+> Install the `deep-search` and `economic-research` skills from https://github.com/sjyang18/hermes-adk-skills
 
-Or load directly from this repo path if Hermes has access.
+Your agent will clone the repo, copy the selected skill directories into `~/.hermes/skills/`, and they'll be available immediately — no restart needed.
+
+### Available skills to install:
+
+| Skill | Category | Install to |
+|-------|----------|-----------|
+| `financial-advisor` | research | `~/.hermes/skills/research/financial-advisor/` |
+| `story-teller` | creative | `~/.hermes/skills/creative/story-teller/` |
+| `deep-search` | research | `~/.hermes/skills/research/deep-search/` |
+| `economic-research` | research | `~/.hermes/skills/research/economic-research/` |
 
 ## Architecture Comparison
 
