@@ -95,8 +95,8 @@ def test_tax_query_works():
 
 
 def test_api_missing_key_handling():
-    """Test graceful handling when API keys are missing."""
-    print("TEST: Missing API key handling...")
+    """Test graceful fallback when API keys are missing."""
+    print("TEST: Missing API key fallback to web_search...")
 
     # Temporarily unset keys
     orig_fred = os.environ.pop("FRED_API_KEY", None)
@@ -106,20 +106,21 @@ def test_api_missing_key_handling():
 
     try:
         fred_result = fred_query(["Austin"], "unemployment")
-        assert "error" in fred_result[0]
-        assert "FRED_API_KEY" in fred_result[0]["error"]
+        assert "fallback" in fred_result[0]
+        assert fred_result[0]["fallback"] == "web_search"
+        assert "fred.stlouisfed.org" in fred_result[0]["query"]
 
         census_result = census_query(["Texas"], "education")
-        assert "error" in census_result[0]
-        assert "CENSUS_API_KEY" in census_result[0]["error"]
+        assert "fallback" in census_result[0]
+        assert "data.census.gov" in census_result[0]["query"]
 
         hud_result = hud_query(states=["Texas"], metric="fmr")
-        assert "error" in hud_result[0]
-        assert "HUD_API_KEY" in hud_result[0]["error"]
+        assert "fallback" in hud_result[0]
+        assert "huduser.gov" in hud_result[0]["query"]
 
         eia_result = eia_query(["Texas"], "electricity")
-        assert "error" in eia_result[0]
-        assert "EIA_API_KEY" in eia_result[0]["error"]
+        assert "fallback" in eia_result[0]
+        assert "eia.gov" in eia_result[0]["query"]
     finally:
         # Restore keys
         if orig_fred:
@@ -131,7 +132,7 @@ def test_api_missing_key_handling():
         if orig_eia:
             os.environ["EIA_API_KEY"] = orig_eia
 
-    print("  ✓ All APIs return helpful error with registration link when key missing")
+    print("  ✓ All APIs return web_search fallback query when key missing")
 
 
 def test_save_report():

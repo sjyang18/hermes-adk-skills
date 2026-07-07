@@ -36,23 +36,24 @@ User ↔ Coordinator (this agent)
               └─ Self-corrects if discrepancies found
 ```
 
-## Prerequisites — API Keys
+## Prerequisites — API Keys (Optional)
 
-The following free API keys must be set in the environment (or `~/.hermes/.env`):
+**Keys are NOT required.** The skill works in two modes:
+
+1. **No keys (default)** — Uses `web_search` + `browser` to scrape data directly from government websites (FRED, BLS, Census, etc.). Slightly slower but zero setup.
+2. **With keys (faster/structured)** — Direct API calls return clean JSON. Free to register if you want faster, more reliable data.
 
 | API | Key Name | Registration URL |
 |-----|----------|-----------------|
-| **FRED** (St. Louis Fed) | `FRED_API_KEY` | https://fredaccount.stlouisfed.org/login/secure/apikeys |
-| **BEA** (Bureau of Economic Analysis) | `BEA_API_KEY` | https://apps.bea.gov/api/signup/index.cfm |
-| **BLS** (Bureau of Labor Statistics) | `BLS_API_KEY` | https://data.bls.gov/registrationEngine/ |
-| **Census** | `CENSUS_API_KEY` | https://api.census.gov/data/key_signup.html |
-| **HUD** (Housing & Urban Dev) | `HUD_API_KEY` | https://www.huduser.gov/portal/dataset/fmr-api.html |
-| **EIA** (Energy Information) | `EIA_API_KEY` | https://www.eia.gov/opendata/register.php |
-| **FEC** (Federal Election Commission) | `FEC_API_KEY` | https://api.open.fec.gov/ |
+| FRED (St. Louis Fed) | `FRED_API_KEY` | https://fredaccount.stlouisfed.org/login/secure/apikeys |
+| BEA (Bureau of Economic Analysis) | `BEA_API_KEY` | https://apps.bea.gov/api/signup/index.cfm |
+| BLS (Bureau of Labor Statistics) | `BLS_API_KEY` | https://data.bls.gov/registrationEngine/ |
+| Census | `CENSUS_API_KEY` | https://api.census.gov/data/key_signup.html |
+| HUD (Housing & Urban Dev) | `HUD_API_KEY` | https://www.huduser.gov/portal/dataset/fmr-api.html |
+| EIA (Energy Information) | `EIA_API_KEY` | https://www.eia.gov/opendata/register.php |
+| FEC (Federal Election Commission) | `FEC_API_KEY` | https://api.open.fec.gov/ |
 
-Optional: `NEWS_API_KEY` (newsapi.org), `SERPER_API_KEY` (serper.dev)
-
-**If a key is missing**: inform the user with the registration link. Do NOT fail silently.
+When no key is available for a source, the agent automatically falls back to web search of that agency's public website.
 
 ## Workflow
 
@@ -71,19 +72,24 @@ Parse the user's request to identify:
 
 ### Step 2 — Data Collection
 
-Use `delegate_task` with `["terminal"]` toolset. The subagent runs `scripts/api_tools.py` functions via Python to query APIs.
+**If API keys are available:** Use `delegate_task` with `["terminal"]` toolset to run `scripts/api_tools.py` for structured JSON data.
 
-For each required data source, run the appropriate function:
-```python
-# Examples:
-python3 scripts/api_tools.py fred --cities "Austin,Raleigh" --metric unemployment
-python3 scripts/api_tools.py bls --cities "Austin,Raleigh" --metric wages
-python3 scripts/api_tools.py census --states "Texas,North Carolina" --metric education
-python3 scripts/api_tools.py hud --cities "Austin,Raleigh" --metric fmr
-python3 scripts/api_tools.py eia --states "Texas,North Carolina" --metric electricity
+**If no API keys (default):** Use `delegate_task` with `["web", "browser"]` toolset. The subagent searches government websites directly:
+
+```
+Goal: "Find the current unemployment rate for Austin, TX and Raleigh, NC from the Bureau of Labor Statistics and FRED"
+Context: [ERA prompt + specific metrics needed + target regions]
+Toolsets: ["web", "browser"]
 ```
 
-Each command outputs JSON results with source citations.
+Web fallback search targets:
+- FRED data → `site:fred.stlouisfed.org {city} unemployment`
+- BLS data → `site:bls.gov {state} wages occupational`
+- Census → `site:data.census.gov {state} education attainment`
+- HUD → `site:huduser.gov {region} fair market rent`
+- EIA → `site:eia.gov {state} electricity price`
+
+Each source returns structured data that the synthesis step can consume.
 
 ### Step 3 — Analysis & Synthesis
 

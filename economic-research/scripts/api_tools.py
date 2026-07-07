@@ -60,10 +60,10 @@ FRED_SERIES_SUFFIXES = {
 
 
 def fred_query(cities: list[str], metric: str = "unemployment") -> list[dict]:
-    """Fetch regional macro stats from FRED API."""
+    """Fetch regional macro stats from FRED API. Falls back to web search instructions if no key."""
     api_key = os.getenv("FRED_API_KEY")
     if not api_key:
-        return [{"error": "FRED_API_KEY not set. Register at: https://fredaccount.stlouisfed.org/login/secure/apikeys"}]
+        return [{"fallback": "web_search", "query": f"site:fred.stlouisfed.org {' '.join(cities)} {metric}", "note": "No FRED_API_KEY set. Use web_search with the query above, or register at: https://fredaccount.stlouisfed.org/login/secure/apikeys"}]
 
     suffix = FRED_SERIES_SUFFIXES.get(metric, "UR")
     results = []
@@ -200,10 +200,10 @@ def bls_query(cities: list[str] = None, states: list[str] = None, metric: str = 
 # ============================================================
 
 def census_query(states: list[str], metric: str = "education") -> list[dict]:
-    """Fetch Census ACS data — education, demographics."""
+    """Fetch Census ACS data — education, demographics. Falls back to web search if no key."""
     api_key = os.getenv("CENSUS_API_KEY")
     if not api_key:
-        return [{"error": "CENSUS_API_KEY not set. Register at: https://api.census.gov/data/key_signup.html"}]
+        return [{"fallback": "web_search", "query": f"site:data.census.gov {' '.join(states)} {metric} attainment", "note": "No CENSUS_API_KEY set. Use web_search with the query above, or register at: https://api.census.gov/data/key_signup.html"}]
 
     results = []
     # ACS 5-Year estimates — education attainment
@@ -249,10 +249,11 @@ def census_query(states: list[str], metric: str = "education") -> list[dict]:
 # ============================================================
 
 def hud_query(cities: list[str] = None, states: list[str] = None, metric: str = "fmr") -> list[dict]:
-    """Fetch HUD Fair Market Rent or income limits."""
+    """Fetch HUD Fair Market Rent or income limits. Falls back to web search if no key."""
     api_key = os.getenv("HUD_API_KEY")
     if not api_key:
-        return [{"error": "HUD_API_KEY not set. Register at: https://www.huduser.gov/portal/dataset/fmr-api.html"}]
+        regions = states or cities or []
+        return [{"fallback": "web_search", "query": f"site:huduser.gov {' '.join(regions)} fair market rent 2024", "note": "No HUD_API_KEY set. Use web_search with the query above, or register at: https://www.huduser.gov/portal/dataset/fmr-api.html"}]
 
     headers = {"Authorization": f"Bearer {api_key}"}
     results = []
@@ -292,10 +293,10 @@ def hud_query(cities: list[str] = None, states: list[str] = None, metric: str = 
 # ============================================================
 
 def eia_query(states: list[str], metric: str = "electricity") -> list[dict]:
-    """Fetch EIA state electricity rates."""
+    """Fetch EIA state electricity rates. Falls back to web search if no key."""
     api_key = os.getenv("EIA_API_KEY")
     if not api_key:
-        return [{"error": "EIA_API_KEY not set. Register at: https://www.eia.gov/opendata/register.php"}]
+        return [{"fallback": "web_search", "query": f"site:eia.gov {' '.join(states)} electricity price residential", "note": "No EIA_API_KEY set. Use web_search with the query above, or register at: https://www.eia.gov/opendata/register.php"}]
 
     results = []
     # State electricity price series: ELEC.PRICE.{STATE}-ALL.M
