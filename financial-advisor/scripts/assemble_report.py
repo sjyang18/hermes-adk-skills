@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble the final financial advisor report from 4 sub-agent outputs.
+"""Assemble the final financial advisor report from 6 sub-agent outputs.
 
 Usage:
     python assemble_report.py --ticker AAPL --risk moderate --period long-term \
@@ -7,10 +7,12 @@ Usage:
         --trading-analyst /path/to/trading.md \
         --execution-analyst /path/to/execution.md \
         --risk-analyst /path/to/risk.md \
+        --counter-verification /path/to/counter.md \
+        --monitoring-sheet /path/to/monitoring.md \
         --output /path/to/final_report.md
 
 Or pipe JSON via stdin:
-    echo '{"ticker":"AAPL","risk":"moderate","period":"long-term","data_analyst":"...","trading_analyst":"...","execution_analyst":"...","risk_analyst":"..."}' | python assemble_report.py --stdin --output report.md
+    echo '{"ticker":"AAPL",...,"counter_verification":"...","monitoring_sheet":"..."}' | python assemble_report.py --stdin --output report.md
 """
 
 import argparse
@@ -34,8 +36,10 @@ def assemble_report(
     trading_analyst_output: str,
     execution_analyst_output: str,
     risk_analyst_output: str,
+    counter_verification_output: str = "",
+    monitoring_sheet_output: str = "",
 ) -> str:
-    """Assemble the final markdown report from all 4 sub-agent outputs."""
+    """Assemble the final markdown report from all 6 sub-agent outputs."""
     
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
@@ -56,6 +60,27 @@ tags:
   - analysis
   - {ticker.lower()}
 ---"""
+
+    # Build optional sections
+    counter_section = ""
+    if counter_verification_output.strip():
+        counter_section = f"""
+---
+
+## 5. Counter-Verification (Devil's Advocate)
+
+{counter_verification_output.strip()}
+"""
+
+    monitoring_section = ""
+    if monitoring_sheet_output.strip():
+        monitoring_section = f"""
+---
+
+## 6. Monitoring Sheet & Kill-Switch Conditions
+
+{monitoring_sheet_output.strip()}
+"""
 
     # Main report
     report = f"""{frontmatter}
@@ -89,7 +114,7 @@ tags:
 ## 4. Risk Assessment
 
 {risk_analyst_output.strip()}
-
+{counter_section}{monitoring_section}
 ---
 
 ## Pipeline Metadata
@@ -101,8 +126,9 @@ tags:
 | Investment Period | {investment_period} |
 | Execution Preferences | {execution_preferences} |
 | Generated | {time_str} |
-| Pipeline | financial-advisor v1.0.0 |
+| Pipeline | financial-advisor v2.0.0 |
 | Agent | oci1hermes |
+| Methodology | 3-step chain of inquiry (진단 → 반증 → 모니터링) |
 """
     
     return report
@@ -119,6 +145,8 @@ def main():
     parser.add_argument("--trading-analyst", help="Path to trading analyst output file")
     parser.add_argument("--execution-analyst", help="Path to execution analyst output file")
     parser.add_argument("--risk-analyst", help="Path to risk analyst output file")
+    parser.add_argument("--counter-verification", help="Path to counter-verification output file")
+    parser.add_argument("--monitoring-sheet", help="Path to monitoring sheet output file")
     parser.add_argument("--output", required=True, help="Output file path")
     
     args = parser.parse_args()
@@ -133,6 +161,8 @@ def main():
         trading_out = data["trading_analyst"]
         execution_out = data["execution_analyst"]
         risk_out = data["risk_analyst"]
+        counter_out = data.get("counter_verification", "")
+        monitoring_out = data.get("monitoring_sheet", "")
     else:
         ticker = args.ticker
         risk = args.risk
@@ -147,6 +177,16 @@ def main():
             execution_out = f.read()
         with open(args.risk_analyst) as f:
             risk_out = f.read()
+        
+        counter_out = ""
+        if args.counter_verification:
+            with open(args.counter_verification) as f:
+                counter_out = f.read()
+        
+        monitoring_out = ""
+        if args.monitoring_sheet:
+            with open(args.monitoring_sheet) as f:
+                monitoring_out = f.read()
     
     report = assemble_report(
         ticker=ticker,
@@ -157,6 +197,8 @@ def main():
         trading_analyst_output=trading_out,
         execution_analyst_output=execution_out,
         risk_analyst_output=risk_out,
+        counter_verification_output=counter_out,
+        monitoring_sheet_output=monitoring_out,
     )
     
     with open(args.output, "w") as f:

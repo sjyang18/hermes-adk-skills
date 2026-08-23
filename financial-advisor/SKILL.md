@@ -13,13 +13,16 @@ metadata:
 
 # Financial Advisor Pipeline
 
-A deterministic 4-stage multi-agent pipeline that analyzes a stock ticker and produces:
+A deterministic 6-stage multi-agent pipeline that analyzes a stock ticker and produces:
 1. Market data analysis (SEC filings, news, sentiment)
 2. Trading strategies (5+ tailored to user risk/period)
 3. Execution plan (entry/exit/scaling/stop-loss)
 4. Risk assessment (comprehensive risk + mitigation)
+5. Counter-verification (devil's advocate — challenges the entire thesis)
+6. Monitoring sheet (kill-switch conditions + watch indicators)
 
 Ported from [Google ADK financial-advisor sample](https://github.com/google/adk-samples/tree/main/python/agents/financial-advisor).
+Enhanced with the 3-step chain of inquiry framework (진단 → 반증 → 모니터링) from Shin Ju-il's AI investing methodology.
 
 **See also:** `references/live-run-notes.md` — timing, token costs, and operational patterns from actual runs.
 
@@ -280,7 +283,152 @@ REQUIRED SECTIONS:
 - Critical trade-offs user must accept
 ```
 
-### Step 5: Assemble & Deliver
+### Step 5: Counter-Verification Analyst (delegate_task)
+
+**Toolsets:** `['web']`
+
+**Goal:** Challenge the entire investment thesis — play devil's advocate.
+
+**Context to pass:**
+```
+TASK: Counter-Verification — Devil's Advocate Analysis
+
+You are a contrarian analyst. Your SOLE purpose is to CHALLENGE the investment thesis below.
+Assume the analysis is WRONG and find evidence that supports the OPPOSITE conclusion.
+
+TICKER: {ticker}
+USER PROFILE:
+- Risk Tolerance: {risk_tolerance}
+- Investment Period: {investment_period}
+
+CURRENT INVESTMENT THESIS:
+{data_analyst_output}
+{trading_analyst_output}
+
+INSTRUCTIONS:
+1. Identify the CORE ASSUMPTIONS in the thesis (bullish catalysts, growth narratives, competitive moats)
+2. For EACH assumption, search for contradicting evidence using web_search
+3. Look specifically for:
+   - Bear cases from credible analysts
+   - Insider selling patterns
+   - Competitive threats not mentioned
+   - Macro headwinds ignored
+   - Historical precedents where similar theses failed
+   - Regulatory/legal risks downplayed
+4. Rate the overall thesis vulnerability
+
+CRITICAL RULES:
+- Do NOT invent data. If you can't find contradicting evidence, say so.
+- Use primary sources (SEC filings, exchange data, official reports) over social media.
+- Clearly separate FACTS from your INTERPRETATION.
+
+OUTPUT FORMAT:
+
+## Counter-Verification Report: {ticker}
+
+### Thesis Vulnerability Score: [1-10] (10 = extremely vulnerable)
+
+### Core Assumptions Challenged
+
+#### Assumption 1: [statement from original thesis]
+**Contradicting Evidence:**
+- [Evidence with source]
+**Severity:** [Low | Medium | High | Critical]
+
+[Repeat for each core assumption]
+
+### Bear Case Synthesis
+- [Complete counter-narrative — if someone were SHORTING this stock, what would their thesis be?]
+
+### Risks Not Adequately Covered
+- [Blind spots in the original analysis]
+
+### Confidence Assessment
+- Original thesis strength after counter-verification: [Strengthened | Unchanged | Weakened | Seriously Undermined]
+- Recommendation: [Proceed as planned | Reduce position size | Add hedging | Reconsider entirely]
+
+IMPORTANT: Write your COMPLETE output to ~/financial-advisor-run/{ticker}_counter_verification.md using write_file.
+```
+
+### Step 6: Monitoring Sheet Generator (delegate_task)
+
+**Toolsets:** `[]` (pure reasoning)
+
+**Goal:** Create a concrete monitoring sheet with kill-switch conditions.
+
+**Context to pass:**
+```
+TASK: Generate Investment Monitoring Sheet with Kill-Switch Conditions
+
+You are a portfolio monitoring specialist. Create a CONCRETE, ACTIONABLE monitoring sheet
+that the investor will use DAILY/WEEKLY to decide whether to hold, adjust, or exit.
+
+TICKER: {ticker}
+USER PROFILE:
+- Risk Tolerance: {risk_tolerance}
+- Investment Period: {investment_period}
+
+FULL ANALYSIS CONTEXT:
+Market Analysis: {data_analyst_output}
+Trading Strategies: {trading_analyst_output}
+Execution Plan: {execution_analyst_output}
+Risk Assessment: {risk_analyst_output}
+Counter-Verification: {counter_verification_output}
+
+OUTPUT FORMAT:
+
+# 📊 Monitoring Sheet: {ticker}
+**Created:** [date]
+**Review Frequency:** [Daily / Weekly / Monthly — based on investment_period]
+
+## 🟢 Bullish Indicators (Hold/Add Signals)
+| # | Indicator | Current Value | Target/Threshold | Source | Check Frequency |
+|---|-----------|---------------|------------------|--------|-----------------|
+| 1 | [e.g., Revenue growth rate] | [latest] | [> X%] | [earnings report] | Quarterly |
+| 2 | ... | | | | |
+
+## 🔴 Kill-Switch Conditions (MUST EXIT if triggered)
+| # | Condition | Threshold | Current Status | Action |
+|---|-----------|-----------|----------------|--------|
+| 1 | [e.g., Stock drops below 200-day MA] | [specific price] | [OK / WARNING] | Sell 100% |
+| 2 | [e.g., Insider selling > $X in 30 days] | [specific amount] | [OK / WARNING] | Sell 50% |
+| 3 | [e.g., Debt-to-equity exceeds X] | [ratio] | [OK / WARNING] | Reassess |
+| 4 | [e.g., Key competitor announces X] | [event] | [Not triggered] | Hedge |
+| 5 | [e.g., Regulatory action against company] | [any SEC action] | [Not triggered] | Sell 100% |
+
+## 🟡 Watch Items (Reassess if triggered)
+| # | Item | Why It Matters | What To Do |
+|---|------|---------------|------------|
+| 1 | [e.g., Fed rate decision] | [impact on sector] | [adjust position size] |
+| 2 | ... | | |
+
+## 📅 Macro Calendar (Upcoming Events)
+| Date | Event | Expected Impact | Action Plan |
+|------|-------|-----------------|-------------|
+| [date] | [e.g., Earnings report] | [High] | [Hold through / trim before] |
+| [date] | [e.g., FOMC meeting] | [Medium] | [Monitor] |
+
+## 📏 Position Management Rules
+- Maximum position size: [% of portfolio]
+- Scaling-in increments: [% per add]
+- Stop-loss level: [price or % from entry]
+- Take-profit levels: [price targets]
+- Maximum drawdown tolerance: [%]
+
+## ✅ Weekly Review Checklist
+- [ ] Check all Kill-Switch conditions
+- [ ] Review Bullish Indicators
+- [ ] Check Macro Calendar for upcoming events
+- [ ] Update Current Values in tables above
+- [ ] Log any thesis changes in notes below
+
+## 📝 Notes
+[Space for investor's ongoing observations]
+
+IMPORTANT: Write your COMPLETE output to ~/financial-advisor-run/{ticker}_monitoring_sheet.md using write_file.
+```
+
+### Step 7: Assemble & Deliver
 
 Run `scripts/assemble_report.py` to combine all outputs into final markdown.
 Then deliver to user in conversation.
@@ -299,6 +447,8 @@ Stage 1 → ~/financial-advisor-run/{ticker}_data_analyst.md
 Stage 2 → ~/financial-advisor-run/{ticker}_trading_analyst.md
 Stage 3 → ~/financial-advisor-run/{ticker}_execution_analyst.md
 Stage 4 → ~/financial-advisor-run/{ticker}_risk_analyst.md
+Stage 5 → ~/financial-advisor-run/{ticker}_counter_verification.md
+Stage 6 → ~/financial-advisor-run/{ticker}_monitoring_sheet.md
 ```
 
 Then `assemble_report.py` reads from these files. If a delegate doesn't write a file (happens with web-heavy stages), reconstruct from the delegate summary — but this is lossy and should be avoided.
