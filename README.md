@@ -48,6 +48,16 @@ Enterprise Market Intelligence Agent providing:
 
 **Dependencies:** Free US government API keys (see [prerequisites](economic-research/SKILL.md#prerequisites--api-keys))
 
+### 5. MA Stage Monitor (`optional-skills/finance/ma-stage-monitor/`)
+
+Book-faithful implementation of Kojiro's Moving Average Grand Cycle method:
+- Daily adjusted-close 5/20/40 EMA stage-transition alerts by default
+- Separate MA-ordering stages from slope-based trend confirmation
+- Stateful duplicate suppression and optional weekly 5/20/40 context
+- Source: [Kojiro's original method explanation](https://fu.minkabu.jp/column/kojiro/78)
+
+**Dependencies:** `yfinance`, `pandas`, and `pyyaml`
+
 ## Usage
 
 Tell your Hermes agent:
@@ -64,6 +74,7 @@ Your agent will clone the repo, copy the selected skill directories into `~/.her
 | `story-teller` | creative | `~/.hermes/skills/creative/story-teller/` |
 | `deep-search` | research | `~/.hermes/skills/research/deep-search/` |
 | `economic-research` | research | `~/.hermes/skills/research/economic-research/` |
+| `ma-stage-monitor` | finance | `~/.hermes/skills/finance/ma-stage-monitor/` |
 
 ## Architecture Comparison
 
@@ -86,6 +97,7 @@ cd financial-advisor/scripts && python3 test_pipeline.py
 cd story-teller/scripts && python3 test_pipeline.py
 cd deep-search/scripts && python3 test_deep_search.py
 cd economic-research/scripts && python3 test_economic_research.py
+cd optional-skills/finance/ma-stage-monitor/scripts && python3 test_check_ma_stages.py
 ```
 
 ## License

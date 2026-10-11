@@ -1,7 +1,6 @@
 # MA Stage Monitor - Example Configuration
-# Copy to config.yaml and customize
+# Book-faithful US-stock default: adjusted daily 5/20/40 EMA.
 
-# Tickers to monitor (comma-separated or list)
 tickers:
   - MSFT
   - AMZN
@@ -12,21 +11,12 @@ tickers:
   - QQQM
   - LRCX
 
-# MA windows (default: 5, 20, 40)
+# Keep these defaults for the primary monitor.
+interval: "1d"
+ma_type: "ema"
 ma_windows: [5, 20, 40]
 
-# State directory (where state.json is stored)
+# Use a different directory for a separate weekly monitor.
 state_dir: "~/.ma-stage-monitor"
-
-# Timezone for "after market" scheduling (IANA tz name)
 timezone: "America/Los_Angeles"
-
-# Output format: table, json, csv
 output_format: "table"
-
-# Notification settings (optional - for Hermes cron integration)
-# notify:
-#   channel: "telegram"   # telegram, slack, discord, file
-#   webhook_url: ""       # required for slack/discord
-#   chat_id: ""           # required for telegram
-#   file_path: "~/.ma-stage-monitor/transitions.log"  # for file channel

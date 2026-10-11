@@ -1,257 +1,290 @@
 #!/usr/bin/env python3
-"""
-MA Stage Monitor - Generic, agent-agnostic 5/20/40 MA stage transition detector.
+"""Monitor Kojiro-style 5/20/40 moving-average stage transitions."""
 
-Stage rank mapping (s=5-day, m=20-day, l=40-day):
-  Stage 1 sml: s > m > l  (5 > 20 > 40)
-  Stage 2 msl: m > s > l  (20 > 5 > 40)
-  Stage 3 mls: m > l > s  (20 > 40 > 5)
-  Stage 4 lms: l > m > s  (40 > 20 > 5)
-  Stage 5 lsm: l > s > m  (40 > 5 > 20)
-  Stage 6 slm: s > l > m  (5 > 40 > 20)
-
-Usage:
-  python check_ma_stages.py --tickers MSFT,AMZN,META --state-dir ~/.ma-stage-monitor
-  python check_ma_stages.py --config config.yaml
-"""
-
-import os
-import json
 import argparse
+import csv
+import json
+import os
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import pandas as pd
 import yfinance as yf
 
-
-STAGE_RANKS = {
-    "sml": (5, 20, 40),   # 5 > 20 > 40
-    "msl": (20, 5, 40),   # 20 > 5 > 40
-    "mls": (20, 40, 5),   # 20 > 40 > 5
-    "lms": (40, 20, 5),   # 40 > 20 > 5
-    "lsm": (40, 5, 20),   # 40 > 5 > 20
-    "slm": (5, 40, 20),   # 5 > 40 > 20
-}
+DEFAULT_WINDOWS = (5, 20, 40)
+DEFAULT_MA_TYPE = "ema"
+DEFAULT_INTERVAL = "1d"
+SOURCE_URL = "https://fu.minkabu.jp/column/kojiro/78"
 
 STAGE_NAMES = {
-    "sml": "Stage 1: Strong Uptrend (5>20>40)",
-    "msl": "Stage 2: Pullback / Early Consolidation (20>5>40)",
-    "mls": "Stage 3: Base Build / Mid-term Flattening (20>40>5)",
-    "lms": "Stage 4: Downtrend / Bear Alignment (40>20>5)",
-    "lsm": "Stage 5: Rebound from Downtrend (40>5>20)",
-    "slm": "Stage 6: Down to Up Trend Transition (5>40>20)",
+    "sml": "Stage 1: Bullish ordering",
+    "msl": "Stage 2: Pullback / early consolidation",
+    "mls": "Stage 3: Bearish transition",
+    "lms": "Stage 4: Bearish ordering",
+    "lsm": "Stage 5: Rebound from downtrend",
+    "slm": "Stage 6: Bullish transition",
 }
-
-STAGE_NUMBERS = {
-    "sml": 1,
-    "msl": 2,
-    "mls": 3,
-    "lms": 4,
-    "lsm": 5,
-    "slm": 6,
-}
+STAGE_NUMBERS = {code: number for number, code in enumerate(STAGE_NAMES, 1)}
 
 
-def compute_mas(prices: pd.Series, windows: Tuple[int, int, int]) -> Tuple[float, float, float]:
-    """Compute 5, 20, 40 SMAs from price series."""
-    ma5 = prices.rolling(windows[0]).mean().iloc[-1]
-    ma20 = prices.rolling(windows[1]).mean().iloc[-1]
-    ma40 = prices.rolling(windows[2]).mean().iloc[-1]
-    return float(ma5), float(ma20), float(ma40)
+def validate_windows(windows) -> Tuple[int, int, int]:
+    values = tuple(int(value) for value in windows)
+    if len(values) != 3 or any(value <= 0 for value in values):
+        raise ValueError("ma_windows must contain three positive integers")
+    if values != tuple(sorted(values)) or len(set(values)) != 3:
+        raise ValueError("ma_windows must be three distinct ascending integers")
+    return values
 
 
-def rank_to_stage(ma5: float, ma20: float, ma40: float) -> str:
-    """Map three MA values to stage code based on rank ordering."""
-    vals = {"s": ma5, "m": ma20, "l": ma40}
-    ranked = sorted(vals.keys(), key=lambda k: vals[k], reverse=True)
-    code = "".join(ranked)
-    return code if code in STAGE_RANKS else "unknown"
+def ma_frame(prices: pd.Series, windows: Tuple[int, int, int], ma_type: str) -> pd.DataFrame:
+    """Return short, medium, and long MA series."""
+    if ma_type not in {"ema", "sma"}:
+        raise ValueError("ma_type must be 'ema' or 'sma'")
+    output = {}
+    for label, window in zip(("short", "medium", "long"), windows):
+        if ma_type == "ema":
+            output[label] = prices.ewm(span=window, adjust=False).mean()
+        else:
+            output[label] = prices.rolling(window).mean()
+    return pd.DataFrame(output)
 
 
-def fetch_history(ticker: str, period: str = "6mo") -> pd.DataFrame:
-    """Fetch daily OHLCV from yfinance."""
-    df = yf.download(ticker, period=period, interval="1d", progress=False, auto_adjust=True)
+def rank_to_stage(short: float, medium: float, long: float) -> str:
+    values = {"s": short, "m": medium, "l": long}
+    return "".join(sorted(values, key=values.get, reverse=True))
+
+
+def fetch_history(ticker: str, interval: str = DEFAULT_INTERVAL) -> pd.DataFrame:
+    """Fetch adjusted close history; daily is the recommended primary interval."""
+    period = "2y" if interval == "1d" else "10y"
+    df = yf.download(
+        ticker,
+        period=period,
+        interval=interval,
+        progress=False,
+        auto_adjust=True,
+    )
     if df.empty:
         raise ValueError(f"No data for {ticker}")
-    # yfinance returns MultiIndex columns when single ticker; normalize to simple columns
     if isinstance(df.columns, pd.MultiIndex):
-        # Drop ticker level if present
-        try:
-            df.columns = df.columns.get_level_values(0)
-        except Exception:
-            df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
-    # Ensure we have Close column
+        df.columns = df.columns.get_level_values(0)
     if "Close" not in df.columns:
-        # Try first numeric column
-        num_cols = df.select_dtypes(include="number").columns.tolist()
-        if not num_cols:
-            raise ValueError(f"No numeric Close column for {ticker}")
-        df = df.rename(columns={num_cols[0]: "Close"})
-    df = df[["Close"]].dropna()
-    return df
+        raise ValueError(f"No Close column for {ticker}")
+    return df[["Close"]].dropna()
 
 
-def get_stage_for_date(df: pd.DataFrame, target_date: pd.Timestamp) -> Tuple[str, Tuple[float, float, float]]:
-    """Compute stage as of a specific date (using data up to that date)."""
+def get_stage_for_date(
+    df: pd.DataFrame,
+    target_date: pd.Timestamp,
+    windows: Tuple[int, int, int] = DEFAULT_WINDOWS,
+    ma_type: str = DEFAULT_MA_TYPE,
+):
+    """Compute stage, MA values, and one-bar slopes through target_date."""
     subset = df[df.index <= target_date]
-    if len(subset) < 40:
-        raise ValueError(f"Insufficient data before {target_date.date()}: {len(subset)} bars")
-    ma5, ma20, ma40 = compute_mas(subset["Close"], (5, 20, 40))
-    stage = rank_to_stage(ma5, ma20, ma40)
-    return stage, (ma5, ma20, ma40)
+    if len(subset) < max(windows):
+        raise ValueError(
+            f"Insufficient data before {target_date.date()}: "
+            f"{len(subset)} bars; need {max(windows)}"
+        )
+    frame = ma_frame(subset["Close"], windows, ma_type)
+    current = frame.iloc[-1]
+    previous = frame.iloc[-2]
+    values = tuple(float(current[label]) for label in ("short", "medium", "long"))
+    slopes = tuple(
+        float(current[label] - previous[label])
+        for label in ("short", "medium", "long")
+    )
+    return rank_to_stage(*values), values, slopes
 
 
-def load_state(state_path: Path) -> Dict:
-    if state_path.exists():
-        with open(state_path) as f:
-            return json.load(f)
-    return {}
+def trend_confirmation(stage: str, slopes: Tuple[float, float, float]) -> str:
+    """Separate MA ordering from the original method's slope confirmation."""
+    if stage == "sml" and all(slope > 0 for slope in slopes):
+        return "confirmed_uptrend"
+    if stage == "lms" and all(slope < 0 for slope in slopes):
+        return "confirmed_downtrend"
+    return "ordering_only"
 
 
-def save_state(state_path: Path, state: Dict):
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(state_path, "w") as f:
-        json.dump(state, f, indent=2)
+def load_state(path: Path) -> Dict:
+    if not path.exists():
+        return {}
+    with path.open() as handle:
+        return json.load(handle)
 
 
-def run_check(tickers: List[str], state_dir: Path, notify_only: bool = False) -> List[Dict]:
-    """Main check: returns list of transition dicts."""
+def save_state(path: Path, state: Dict):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as handle:
+        json.dump(state, handle, indent=2)
+
+
+def run_check(
+    tickers: List[str],
+    state_dir: Path,
+    notify_only: bool = False,
+    windows: Tuple[int, int, int] = DEFAULT_WINDOWS,
+    ma_type: str = DEFAULT_MA_TYPE,
+    interval: str = DEFAULT_INTERVAL,
+) -> List[Dict]:
+    windows = validate_windows(windows)
+    ma_type = ma_type.lower()
+    methodology = f"{interval}:{ma_type}:{','.join(map(str, windows))}"
     state_file = state_dir / "state.json"
     state = load_state(state_file)
-    transitions = []
+    results = []
 
     for ticker in tickers:
         try:
-            df = fetch_history(ticker)
-            dates = df.index[-2:]  # last two trading days
-            if len(dates) < 2:
+            df = fetch_history(ticker, interval)
+            if len(df.index) < 2:
                 continue
-
-            today = dates[-1]
-
-            # Compute the latest stage, then compare it with persisted state.
-            # A new ticker is initialized silently. Re-running on the same
-            # trading date never sends a duplicate notification.
-            stage_today, (ma5_t, ma20_t, ma40_t) = get_stage_for_date(df, today)
-            latest_date = today.strftime("%Y-%m-%d")
+            latest = df.index[-1]
+            stage, values, slopes = get_stage_for_date(
+                df, latest, windows=windows, ma_type=ma_type
+            )
+            latest_date = latest.strftime("%Y-%m-%d")
             previous = state.get(ticker)
-            previous_stage = previous.get("stage") if previous else None
-            previous_date = previous.get("date") if previous else None
-            has_new_bar = previous_date != latest_date
+            same_methodology = bool(
+                previous and previous.get("methodology") == methodology
+            )
+            previous_stage = previous.get("stage") if same_methodology else None
+            previous_date = previous.get("date") if same_methodology else None
             transition = bool(
                 previous_stage
-                and has_new_bar
-                and stage_today != previous_stage
+                and previous_date != latest_date
+                and previous_stage != stage
             )
-
+            value_map = {
+                str(window): round(value, 2)
+                for window, value in zip(windows, values)
+            }
+            slope_map = {
+                str(window): round(slope, 4)
+                for window, slope in zip(windows, slopes)
+            }
             result = {
                 "ticker": ticker,
                 "date": latest_date,
-                "stage": stage_today,
-                "stage_number": STAGE_NUMBERS.get(stage_today),
-                "stage_name": STAGE_NAMES.get(stage_today, "Unknown"),
-                "ma5": round(ma5_t, 2),
-                "ma20": round(ma20_t, 2),
-                "ma40": round(ma40_t, 2),
+                "stage": stage,
+                "stage_number": STAGE_NUMBERS[stage],
+                "stage_name": STAGE_NAMES[stage],
+                "confirmation": trend_confirmation(stage, slopes),
+                "interval": interval,
+                "ma_type": ma_type,
+                "ma_windows": list(windows),
+                "ma_values": value_map,
+                "ma_slopes": slope_map,
                 "prev_stage": previous_stage,
                 "prev_stage_number": STAGE_NUMBERS.get(previous_stage),
                 "transition": transition,
             }
-
-            # Always advance state, including silent baselines and unchanged stages.
             state[ticker] = {
-                "stage": stage_today,
+                "stage": stage,
                 "date": latest_date,
-                "ma5": round(ma5_t, 2),
-                "ma20": round(ma20_t, 2),
-                "ma40": round(ma40_t, 2),
+                "methodology": methodology,
+                "ma_values": value_map,
+                "ma_slopes": slope_map,
+                "confirmation": result["confirmation"],
             }
-
             if not notify_only or transition:
-                transitions.append(result)
-
-        except Exception as e:
-            transitions.append({
-                "ticker": ticker,
-                "error": str(e),
-            })
+                results.append(result)
+        except Exception as exc:
+            results.append({"ticker": ticker, "error": str(exc)})
 
     save_state(state_file, state)
-    return transitions
+    return results
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Kojiro-style 5/20/40 MA stage transitions"
+    )
+    parser.add_argument("--tickers", help="Comma-separated tickers")
+    parser.add_argument("--ticker-file", help="One ticker per line or comma-separated")
+    parser.add_argument("--config", help="YAML config path")
+    parser.add_argument("--state-dir", help="State directory")
+    parser.add_argument("--interval", help="yfinance interval; recommended: 1d")
+    parser.add_argument("--ma-type", choices=["ema", "sma"], help="Default: ema")
+    parser.add_argument("--output", choices=["json", "table", "csv"])
+    parser.add_argument("--notify-only", action="store_true")
+    parser.add_argument("--silent-if-none", action="store_true")
+    return parser.parse_args()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MA Stage Monitor - 5/20/40 stage transitions")
-    parser.add_argument("--tickers", help="Comma-separated tickers")
-    parser.add_argument("--ticker-file", help="Path to file with tickers (one per line or comma-separated)")
-    parser.add_argument("--config", help="Path to YAML config file")
-    parser.add_argument("--state-dir", default=os.path.expanduser("~/.ma-stage-monitor"),
-                        help="Directory for state file (default: ~/.ma-stage-monitor)")
-    parser.add_argument("--output", choices=["json", "table", "csv"], default="table",
-                        help="Output format")
-    parser.add_argument("--notify-only", action="store_true",
-                        help="Only output tickers with a new persisted-state transition")
-    parser.add_argument("--silent-if-none", action="store_true",
-                        help="Produce no stdout when there are no transitions or errors")
-    args = parser.parse_args()
-
-    # Load tickers
-    tickers = []
+    args = parse_args()
+    cfg = {}
     if args.config:
         import yaml
-        with open(args.config) as f:
-            cfg = yaml.safe_load(f)
-        tickers = cfg.get("tickers", [])
+        with open(args.config) as handle:
+            cfg = yaml.safe_load(handle) or {}
+
+    tickers = [str(ticker).upper() for ticker in cfg.get("tickers", [])]
     if args.tickers:
-        tickers.extend([t.strip().upper() for t in args.tickers.split(",")])
+        tickers.extend(t.strip().upper() for t in args.tickers.split(",") if t.strip())
     if args.ticker_file:
-        with open(args.ticker_file) as f:
-            content = f.read().replace("\n", ",")
-            tickers.extend([t.strip().upper() for t in content.split(",") if t.strip()])
-
-    # Deduplicate preserving order
-    seen = set()
-    tickers = [t for t in tickers if not (t in seen or seen.add(t))]
-
+        with open(args.ticker_file) as handle:
+            content = handle.read().replace("\n", ",")
+        tickers.extend(t.strip().upper() for t in content.split(",") if t.strip())
+    tickers = list(dict.fromkeys(tickers))
     if not tickers:
-        print("Error: No tickers provided. Use --tickers, --ticker-file, or --config", file=sys.stderr)
-        sys.exit(1)
+        print("Error: no tickers provided", file=sys.stderr)
+        return 1
 
-    state_dir = Path(args.state_dir).expanduser()
-    results = run_check(tickers, state_dir, notify_only=args.notify_only)
+    windows = validate_windows(cfg.get("ma_windows", DEFAULT_WINDOWS))
+    ma_type = args.ma_type or cfg.get("ma_type", DEFAULT_MA_TYPE)
+    interval = args.interval or cfg.get("interval", DEFAULT_INTERVAL)
+    state_dir = Path(
+        args.state_dir or cfg.get("state_dir", "~/.ma-stage-monitor")
+    ).expanduser()
+    output = args.output or cfg.get("output_format", "table")
 
+    results = run_check(
+        tickers,
+        state_dir,
+        notify_only=args.notify_only,
+        windows=windows,
+        ma_type=ma_type,
+        interval=interval,
+    )
     if args.silent_if_none and not results:
-        return
-
-    # Output
-    if args.output == "json":
+        return 0
+    if output == "json":
         print(json.dumps(results, indent=2))
-    elif args.output == "csv":
-        import csv
+    elif output == "csv":
         if results:
             writer = csv.DictWriter(sys.stdout, fieldnames=results[0].keys())
             writer.writeheader()
             writer.writerows(results)
     else:
-        # Table format
-        print(f"\n{'Ticker':<8} {'Date':<12} {'Stage':<6} {'Name':<30} {'MA5':>8} {'MA20':>8} {'MA40':>8} {'Prev':<6} {'Trans':<6} {'Change'}")
-        print("-" * 130)
-        for r in results:
-            if "error" in r:
-                print(f"{r['ticker']:<8} {'ERROR':<12} {'-':<6} {r['error']:<30}")
-            else:
-                trans = "✓" if r["transition"] else ""
-                if r["transition"]:
-                    stage_change = f"S{r['prev_stage_number']}->S{r['stage_number']}"
-                else:
-                    stage_change = ""
-                previous_code = r["prev_stage"] or "-"
-                print(f"{r['ticker']:<8} {r['date']:<12} {r['stage']:<6} {r['stage_name']:<30} "
-                      f"{r['ma5']:>8.2f} {r['ma20']:>8.2f} {r['ma40']:>8.2f} {previous_code:<6} {trans} {stage_change}")
+        labels = [f"MA{window}" for window in windows]
+        print(
+            f"\n{'Ticker':<8} {'Date':<12} {'Stage':<6} "
+            f"{labels[0]:>9} {labels[1]:>9} {labels[2]:>9} "
+            f"{'Confirm':<20} {'Prev':<6} Change"
+        )
+        print("-" * 100)
+        for result in results:
+            if "error" in result:
+                print(f"{result['ticker']:<8} ERROR: {result['error']}")
+                continue
+            values = result["ma_values"]
+            change = (
+                f"S{result['prev_stage_number']}->S{result['stage_number']}"
+                if result["transition"] else ""
+            )
+            print(
+                f"{result['ticker']:<8} {result['date']:<12} {result['stage']:<6} "
+                f"{values[str(windows[0])]:>9.2f} "
+                f"{values[str(windows[1])]:>9.2f} "
+                f"{values[str(windows[2])]:>9.2f} "
+                f"{result['confirmation']:<20} "
+                f"{result['prev_stage'] or '-':<6} {change}"
+            )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

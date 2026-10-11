@@ -1,7 +1,7 @@
 ---
 name: ma-stage-monitor
 description: Detect 5/20/40 MA stage transitions for a ticker list.
-version: 0.1.0
+version: 0.2.0
 author: Seokwon Yang (sjyang18), Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -13,111 +13,105 @@ metadata:
 
 # MA Stage Monitor Skill
 
-Generic, agent-agnostic 5/20/40 simple-moving-average stage transition detector.
+Monitor Kojiro-style moving-average grand-cycle stages. The book-faithful default for US stocks is adjusted daily closes with 5/20/40 EMAs; weekly 5/20/40 is optional higher-timeframe context, not a substitute for the daily signal.
+
+## Source and Method
+
+The primary source is [Kojiro's Moving Average Grand Cycle explanation](https://fu.minkabu.jp/column/kojiro/78). It states:
+
+- Start with 5, 20, and 40 periods across instruments.
+- On daily charts these are 5/20/40 days; on weekly charts they are 5/20/40 weeks.
+- The parameters are a starting point that may be tuned, but Kojiro uses 5/20/40 across instruments.
+- SMA and EMA are both valid; EMA has a slight advantage and is recommended when available.
+
+Market nationality does not justify replacing 40 with 50. A US-style 5/20/50 chart is a separate adaptation and must not be used to validate alerts from the book-based 5/20/40 method.
 
 ## Stage Definitions
 
-Uses the rank convention where **s=5-day MA, m=20-day MA, l=40-day MA** and stage codes reflect descending rank order:
+The stage is determined by MA ordering, where **s=short (5), m=medium (20), l=long (40)**:
 
 | Stage | Code | Rank Order | Interpretation |
 |-------|------|------------|----------------|
-| 1 | sml | s > m > l | Strong Uptrend / Trend confirmed — 5 > 20 > 40 |
-| 2 | msl | m > s > l | Pullback / Early Consolidation — 20 > 5 > 40 |
-| 3 | mls | m > l > s | Base Build / Mid-term Flattening — 20 > 40 > 5 |
-| 4 | lms | l > m > s | Downtrend / Bear Alignment — 40 > 20 > 5 |
-| 5 | lsm | l > s > m | Rebound from Downtrend — 40 > 5 > 20 |
-| 6 | slm | s > l > m | Down to Up Trend Transition — 5 > 40 > 20 |
+| 1 | sml | s > m > l | Bullish ordering |
+| 2 | msl | m > s > l | Pullback / early consolidation |
+| 3 | mls | m > l > s | Bearish transition |
+| 4 | lms | l > m > s | Bearish ordering |
+| 5 | lsm | l > s > m | Rebound from downtrend |
+| 6 | slm | s > l > m | Bullish transition |
+
+Ordering alone defines the stage. Do not call Stage 1 a confirmed uptrend unless all three averages are rising, or Stage 4 a confirmed downtrend unless all three are falling. The script reports `confirmation` separately as `confirmed_uptrend`, `confirmed_downtrend`, or `ordering_only`.
 
 ## When to Use
 
-- You have a list of tickers and want daily post-market stage transition alerts
-- You want a stateless or stateful (saved state) design that works on any agent platform (Hermes, Muse, Gemini, plain cron)
-- You prefer computing transitions by re-evaluating yesterday vs today from market data, optionally caching state to save API calls
+- Daily post-market stage-transition alerts for US stocks
+- A stateful watchlist that suppresses duplicate alerts
+- Optional weekly confirmation using the same 5/20/40 parameters
+
+Do not compare daily 5/20/40 alerts against weekly or 5/20/50 charts.
 
 ## Prerequisites
 
 - Python 3.10+
-- `pip install yfinance pandas pyyaml`
-- Internet access for yfinance data
+- `yfinance`, `pandas`, and `pyyaml`
+- Internet access for adjusted market history
+
+Install dependencies through `terminal(command="pip install yfinance pandas pyyaml")` in an isolated environment.
 
 ## How to Run
 
-### Standalone (any platform)
-
 ```bash
-# From config file
 python scripts/check_ma_stages.py --config config.yaml
-
-# Direct ticker list
-python scripts/check_ma_stages.py --tickers "MSFT,AMZN,META,AVGO,GOOGL,SOXX,QQQM,LRCX"
-
-# From ticker file (one per line or comma-separated)
-python scripts/check_ma_stages.py --ticker-file tickers.txt
-
-# Output as JSON for piping
-python scripts/check_ma_stages.py --config config.yaml --output json
+python scripts/check_ma_stages.py --tickers "MSFT,AMZN,META" --output json
+python scripts/check_ma_stages.py --config config.yaml --notify-only --silent-if-none
 ```
 
-### With Hermes (optional cron integration)
-
-If running in Hermes, you can schedule it via cron:
+For the optional higher-timeframe view, use a separate state directory so daily and weekly baselines never collide:
 
 ```bash
-# Create a daily job at 17:30 PT weekdays
-cronjob_manage action=create prompt="Run MA stage monitor daily after market close" \
-  schedule="30 17 * * 1-5" timezone="America/Los_Angeles" \
-  command="python /path/to/check_ma_stages.py --config /path/to/config.yaml --output json"
+python scripts/check_ma_stages.py --tickers "MSFT,AMZN" --interval 1wk \
+  --state-dir ~/.ma-stage-monitor-weekly
 ```
 
-The script writes `state.json` to the configured `state_dir` (`~/.ma-stage-monitor` by default). In `--notify-only` mode it compares the latest stage with persisted state, initializes new tickers silently, and never repeats an alert for the same trading date. Add `--silent-if-none` for script-only schedulers where empty stdout suppresses delivery.
-
-## Config File (config.yaml)
+## Configuration
 
 ```yaml
-tickers:
-  - MSFT
-  - AMZN
-  - META
-  - AVGO
-  - GOOGL
-  - SOXX
-  - QQQM
-  - LRCX
-
+tickers: [MSFT, AMZN, META]
+interval: "1d"
+ma_type: "ema"
 ma_windows: [5, 20, 40]
 state_dir: "~/.ma-stage-monitor"
 timezone: "America/Los_Angeles"
 output_format: "table"
 ```
 
-## Output
-
-Table format (default):
-
-``` 
-Ticker   Date         Stage  Name                              MA5     MA20     MA40   Prev   Trans
-MSFT     2025-01-15   mls    Stage 3: Base Build / Mid-term Flattening (20>40>5)  420.15  410.20   395.10 msl    ✓
-AMZN     2025-01-15   sml    Stage 1: Strong Uptrend (5>20>40) 180.50  175.30   170.10 sml
-```
-
-JSON format includes full details for programmatic consumption.
+The script reads all methodology fields. Changing interval, MA type, or windows creates a new silent baseline rather than emitting false transitions against incompatible saved values.
 
 ## Procedure
 
-1. Copy `config.example.yaml` to `config.yaml` and edit tickers.
-2. Install dependencies with `pip install yfinance pandas pyyaml`.
-3. Initialize state with `python scripts/check_ma_stages.py --config config.yaml --notify-only --silent-if-none`; the first run records a baseline without transition alerts.
-4. Schedule that same command after market close. Deliver stdout verbatim; empty stdout means no notification.
+1. Copy `config.example.yaml` to `config.yaml` and edit the ticker list.
+2. Keep `interval: "1d"`, `ma_type: "ema"`, and `ma_windows: [5, 20, 40]` for the recommended US-stock monitor.
+3. Initialize with `python scripts/check_ma_stages.py --config config.yaml --notify-only --silent-if-none`; empty output confirms a silent baseline.
+4. Schedule the same command after the US close. Deliver stdout verbatim; empty stdout means no transition.
+5. If weekly context is desired, schedule a second run with `interval: "1wk"` and a different state directory.
+
+## Output
+
+JSON includes the interval, MA type, windows, MA values, one-bar slopes, stage, confirmation, previous stage, and transition flag. Table output labels columns from the configured windows.
 
 ## Pitfalls
 
-- yfinance rate limits: keep ticker list reasonable (<50), script handles retries
-- Non-trading days: script uses last two available trading dates automatically
-- State file is per-user/directory; multiple agents pointing to same state_dir will share cache
-- Insufficient history (<40 bars) for new IPOs will error — filter tickers accordingly
+- **Wrong timeframe:** `1d` and `1wk` answer different questions; never compare their stage numbers directly.
+- **Wrong parameters:** 50-period charts are common in the US but are not the source method's default.
+- **Incomplete confirmation:** stage ordering does not prove the averages have the required slopes or that the 20–40 band is expanding.
+- **Open bars:** schedule after market close; a live daily or weekly bar can reverse a crossover.
+- **Method migration:** the first run after changing methodology silently resets each ticker's baseline.
+- **Data differences:** adjusted-close policies and weekly-bar boundaries can produce small provider-to-provider crossover differences.
+- **Rate limits:** keep batches reasonable and retry transient yfinance failures.
 
 ## Verification
 
-- Run manually and confirm output shows expected stage codes
-- Check `~/.ma-stage-monitor/state.json` updates after each run
-- On a known transition day, verify `transition: true` appears for that ticker
+- Confirm output says `interval: 1d`, `ma_type: ema`, and windows `[5, 20, 40]`.
+- Recompute one ticker from adjusted closes and verify all three EMA values and their ordering.
+- Verify Stage 1 is `confirmed_uptrend` only when all three slopes are positive.
+- Re-run on the same market date and verify no duplicate transition appears.
+- Change one methodology field in a scratch state directory and verify the first run creates a silent baseline.
