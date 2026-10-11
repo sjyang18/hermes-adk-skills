@@ -1,22 +1,26 @@
 # MA Stage Monitor - Example Configuration
 # Book-faithful US-stock default: adjusted daily 5/20/40 EMA.
 
-tickers:
+core_tickers:
+  - META
+  - IVV
   - MSFT
   - AMZN
-  - META
-  - AVGO
   - GOOGL
+  - QQQ
   - SOXX
+  - NVDA
+  - AVGO
+
+# Frequently updated tactical watchlist.
+satellite_tickers:
   - QQQM
   - LRCX
+  - AEP
 
-# Keep these defaults for the primary monitor.
 interval: "1d"
 ma_type: "ema"
 ma_windows: [5, 20, 40]
-
-# Use a different directory for a separate weekly monitor.
 state_dir: "~/.ma-stage-monitor"
 timezone: "America/Los_Angeles"
 output_format: "table"

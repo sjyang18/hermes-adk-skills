@@ -53,7 +53,7 @@ Enterprise Market Intelligence Agent providing:
 Book-faithful implementation of Kojiro's Moving Average Grand Cycle method:
 - Daily adjusted-close 5/20/40 EMA stage-transition alerts by default
 - Separate MA-ordering stages from slope-based trend confirmation
-- Stateful duplicate suppression and optional weekly 5/20/40 context
+- Stateful duplicate suppression, core/satellite watchlists, and optional weekly 5/20/40 context
 - Source: [Kojiro's original method explanation](https://fu.minkabu.jp/column/kojiro/78)
 
 **Dependencies:** `yfinance`, `pandas`, and `pyyaml`

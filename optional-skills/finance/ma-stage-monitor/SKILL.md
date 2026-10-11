@@ -1,7 +1,7 @@
 ---
 name: ma-stage-monitor
 description: Detect 5/20/40 MA stage transitions for a ticker list.
-version: 0.2.0
+version: 0.3.0
 author: Seokwon Yang (sjyang18), Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -46,6 +46,7 @@ Ordering alone defines the stage. Do not call Stage 1 a confirmed uptrend unless
 - Daily post-market stage-transition alerts for US stocks
 - A stateful watchlist that suppresses duplicate alerts
 - Optional weekly confirmation using the same 5/20/40 parameters
+- Separate stable core holdings from a frequently edited satellite list
 
 Do not compare daily 5/20/40 alerts against weekly or 5/20/50 charts.
 
@@ -75,7 +76,8 @@ python scripts/check_ma_stages.py --tickers "MSFT,AMZN" --interval 1wk \
 ## Configuration
 
 ```yaml
-tickers: [MSFT, AMZN, META]
+core_tickers: [META, IVV, MSFT, AMZN, GOOGL, QQQ, SOXX, NVDA, AVGO]
+satellite_tickers: [QQQM, LRCX, AEP]
 interval: "1d"
 ma_type: "ema"
 ma_windows: [5, 20, 40]
@@ -84,11 +86,11 @@ timezone: "America/Los_Angeles"
 output_format: "table"
 ```
 
-The script reads all methodology fields. Changing interval, MA type, or windows creates a new silent baseline rather than emitting false transitions against incompatible saved values.
+Core tickers are listed first and win if a symbol is accidentally duplicated in both lists. The legacy `tickers` key remains supported. The script reads all methodology fields; changing interval, MA type, or windows creates a new silent baseline rather than emitting false transitions against incompatible saved values.
 
 ## Procedure
 
-1. Copy `config.example.yaml` to `config.yaml` and edit the ticker list.
+1. Copy `config.example.yaml` to `config.yaml`; keep long-term holdings under `core_tickers` and edit `satellite_tickers` as needed.
 2. Keep `interval: "1d"`, `ma_type: "ema"`, and `ma_windows: [5, 20, 40]` for the recommended US-stock monitor.
 3. Initialize with `python scripts/check_ma_stages.py --config config.yaml --notify-only --silent-if-none`; empty output confirms a silent baseline.
 4. Schedule the same command after the US close. Deliver stdout verbatim; empty stdout means no transition.
@@ -96,7 +98,7 @@ The script reads all methodology fields. Changing interval, MA type, or windows 
 
 ## Output
 
-JSON includes the interval, MA type, windows, MA values, one-bar slopes, stage, confirmation, previous stage, and transition flag. Table output labels columns from the configured windows.
+JSON includes the ticker-list membership, interval, MA type, windows, MA values, one-bar slopes, stage, confirmation, previous stage, and transition flag. Table output labels each ticker as core or satellite and labels MA columns from the configured windows.
 
 ## Pitfalls
 
@@ -107,6 +109,7 @@ JSON includes the interval, MA type, windows, MA values, one-bar slopes, stage, 
 - **Method migration:** the first run after changing methodology silently resets each ticker's baseline.
 - **Data differences:** adjusted-close policies and weekly-bar boundaries can produce small provider-to-provider crossover differences.
 - **Rate limits:** keep batches reasonable and retry transient yfinance failures.
+- **Duplicate membership:** a ticker present in both lists is monitored once and classified as core.
 
 ## Verification
 

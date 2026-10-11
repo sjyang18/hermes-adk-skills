@@ -60,6 +60,16 @@ class MAStageMonitorTests(unittest.TestCase):
             self.assertEqual(saved["AMZN"]["methodology"], "1d:ema:5,20,40")
             self.assertEqual(saved["AMZN"]["stage"], "sml")
 
+    def test_ticker_groups_support_core_and_satellite(self):
+        tickers, groups = MODULE.ticker_groups_from_config(
+            {
+                "core_tickers": ["meta", "msft"],
+                "satellite_tickers": ["aep", "meta"],
+            }
+        )
+        self.assertEqual(tickers, ["META", "MSFT", "AEP"])
+        self.assertEqual(groups, {"META": "core", "MSFT": "core", "AEP": "satellite"})
+
     def test_windows_must_be_distinct_and_ascending(self):
         with self.assertRaises(ValueError):
             MODULE.validate_windows([5, 40, 20])

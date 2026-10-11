@@ -37,6 +37,23 @@ def validate_windows(windows) -> Tuple[int, int, int]:
     return values
 
 
+def ticker_groups_from_config(config: Dict):
+    """Return a deduplicated ticker list and core/satellite membership."""
+    core = [str(ticker).strip().upper() for ticker in config.get("core_tickers", [])]
+    satellite = [
+        str(ticker).strip().upper()
+        for ticker in config.get("satellite_tickers", [])
+    ]
+    legacy = [str(ticker).strip().upper() for ticker in config.get("tickers", [])]
+    tickers = list(dict.fromkeys(core + satellite + legacy))
+    groups = {ticker: "core" for ticker in core}
+    for ticker in satellite:
+        groups.setdefault(ticker, "satellite")
+    for ticker in legacy:
+        groups.setdefault(ticker, "legacy")
+    return tickers, groups
+
+
 def ma_frame(prices: pd.Series, windows: Tuple[int, int, int], ma_type: str) -> pd.DataFrame:
     """Return short, medium, and long MA series."""
     if ma_type not in {"ema", "sma"}:
@@ -221,13 +238,17 @@ def main():
         with open(args.config) as handle:
             cfg = yaml.safe_load(handle) or {}
 
-    tickers = [str(ticker).upper() for ticker in cfg.get("tickers", [])]
+    tickers, ticker_groups = ticker_groups_from_config(cfg)
     if args.tickers:
-        tickers.extend(t.strip().upper() for t in args.tickers.split(",") if t.strip())
+        direct = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+        tickers.extend(direct)
+        ticker_groups.update({ticker: "direct" for ticker in direct})
     if args.ticker_file:
         with open(args.ticker_file) as handle:
             content = handle.read().replace("\n", ",")
-        tickers.extend(t.strip().upper() for t in content.split(",") if t.strip())
+        file_tickers = [t.strip().upper() for t in content.split(",") if t.strip()]
+        tickers.extend(file_tickers)
+        ticker_groups.update({ticker: "file" for ticker in file_tickers})
     tickers = list(dict.fromkeys(tickers))
     if not tickers:
         print("Error: no tickers provided", file=sys.stderr)
@@ -249,6 +270,8 @@ def main():
         ma_type=ma_type,
         interval=interval,
     )
+    for result in results:
+        result["list"] = ticker_groups.get(result["ticker"], "unknown")
     if args.silent_if_none and not results:
         return 0
     if output == "json":
@@ -261,14 +284,17 @@ def main():
     else:
         labels = [f"MA{window}" for window in windows]
         print(
-            f"\n{'Ticker':<8} {'Date':<12} {'Stage':<6} "
+            f"\n{'Ticker':<8} {'List':<10} {'Date':<12} {'Stage':<6} "
             f"{labels[0]:>9} {labels[1]:>9} {labels[2]:>9} "
             f"{'Confirm':<20} {'Prev':<6} Change"
         )
-        print("-" * 100)
+        print("-" * 112)
         for result in results:
             if "error" in result:
-                print(f"{result['ticker']:<8} ERROR: {result['error']}")
+                print(
+                    f"{result['ticker']:<8} {result['list']:<10} "
+                    f"ERROR: {result['error']}"
+                )
                 continue
             values = result["ma_values"]
             change = (
@@ -276,7 +302,8 @@ def main():
                 if result["transition"] else ""
             )
             print(
-                f"{result['ticker']:<8} {result['date']:<12} {result['stage']:<6} "
+                f"{result['ticker']:<8} {result['list']:<10} "
+                f"{result['date']:<12} {result['stage']:<6} "
                 f"{values[str(windows[0])]:>9.2f} "
                 f"{values[str(windows[1])]:>9.2f} "
                 f"{values[str(windows[2])]:>9.2f} "
