@@ -45,6 +45,15 @@ STAGE_NAMES = {
     "slm": "Stage 6: Down to Up Trend Transition (5>40>20)",
 }
 
+STAGE_NUMBERS = {
+    "sml": 1,
+    "msl": 2,
+    "mls": 3,
+    "lms": 4,
+    "lsm": 5,
+    "slm": 6,
+}
+
 
 def compute_mas(prices: pd.Series, windows: Tuple[int, int, int]) -> Tuple[float, float, float]:
     """Compute 5, 20, 40 SMAs from price series."""
@@ -122,53 +131,47 @@ def run_check(tickers: List[str], state_dir: Path, notify_only: bool = False) ->
                 continue
 
             today = dates[-1]
-            yesterday = dates[-2]
 
-            # Today's stage
+            # Compute the latest stage, then compare it with persisted state.
+            # A new ticker is initialized silently. Re-running on the same
+            # trading date never sends a duplicate notification.
             stage_today, (ma5_t, ma20_t, ma40_t) = get_stage_for_date(df, today)
-
-            # Yesterday's stage (recompute from history up to yesterday)
-            stage_yest, (ma5_y, ma20_y, ma40_y) = get_stage_for_date(df, yesterday)
-
-            prev = state.get(ticker, {}).get("stage")
-            transition = stage_today != stage_yest
-            stage_changed = stage_today != prev
+            latest_date = today.strftime("%Y-%m-%d")
+            previous = state.get(ticker)
+            previous_stage = previous.get("stage") if previous else None
+            previous_date = previous.get("date") if previous else None
+            has_new_bar = previous_date != latest_date
+            transition = bool(
+                previous_stage
+                and has_new_bar
+                and stage_today != previous_stage
+            )
 
             result = {
                 "ticker": ticker,
-                "date": today.strftime("%Y-%m-%d"),
+                "date": latest_date,
                 "stage": stage_today,
+                "stage_number": STAGE_NUMBERS.get(stage_today),
                 "stage_name": STAGE_NAMES.get(stage_today, "Unknown"),
                 "ma5": round(ma5_t, 2),
                 "ma20": round(ma20_t, 2),
                 "ma40": round(ma40_t, 2),
-                "prev_stage": stage_yest,
+                "prev_stage": previous_stage,
+                "prev_stage_number": STAGE_NUMBERS.get(previous_stage),
                 "transition": transition,
-                "stage_changed_from_state": stage_changed,
             }
 
-            # Only keep results with a transition if notify_only is True
-            if notify_only and not transition:
-                # Still update state silently
-                state[ticker] = {
-                    "stage": stage_today,
-                    "date": today.strftime("%Y-%m-%d"),
-                    "ma5": round(ma5_t, 2),
-                    "ma20": round(ma20_t, 2),
-                    "ma40": round(ma40_t, 2),
-                }
-                continue
-
-            transitions.append(result)
-
-            # Update state
+            # Always advance state, including silent baselines and unchanged stages.
             state[ticker] = {
                 "stage": stage_today,
-                "date": today.strftime("%Y-%m-%d"),
+                "date": latest_date,
                 "ma5": round(ma5_t, 2),
                 "ma20": round(ma20_t, 2),
                 "ma40": round(ma40_t, 2),
             }
+
+            if not notify_only or transition:
+                transitions.append(result)
 
         except Exception as e:
             transitions.append({
@@ -190,7 +193,9 @@ def main():
     parser.add_argument("--output", choices=["json", "table", "csv"], default="table",
                         help="Output format")
     parser.add_argument("--notify-only", action="store_true",
-                        help="Only output tickers with a stage transition (silently update state for others)")
+                        help="Only output tickers with a new persisted-state transition")
+    parser.add_argument("--silent-if-none", action="store_true",
+                        help="Produce no stdout when there are no transitions or errors")
     args = parser.parse_args()
 
     # Load tickers
@@ -218,6 +223,9 @@ def main():
     state_dir = Path(args.state_dir).expanduser()
     results = run_check(tickers, state_dir, notify_only=args.notify_only)
 
+    if args.silent_if_none and not results:
+        return
+
     # Output
     if args.output == "json":
         print(json.dumps(results, indent=2))
@@ -236,9 +244,13 @@ def main():
                 print(f"{r['ticker']:<8} {'ERROR':<12} {'-':<6} {r['error']:<30}")
             else:
                 trans = "✓" if r["transition"] else ""
-                stage_change = f"{r['prev_stage']}->{r['stage']}" if r["transition"] else ""
+                if r["transition"]:
+                    stage_change = f"S{r['prev_stage_number']}->S{r['stage_number']}"
+                else:
+                    stage_change = ""
+                previous_code = r["prev_stage"] or "-"
                 print(f"{r['ticker']:<8} {r['date']:<12} {r['stage']:<6} {r['stage_name']:<30} "
-                      f"{r['ma5']:>8.2f} {r['ma20']:>8.2f} {r['ma40']:>8.2f} {r['prev_stage']:<6} {trans} {stage_change}")
+                      f"{r['ma5']:>8.2f} {r['ma20']:>8.2f} {r['ma40']:>8.2f} {previous_code:<6} {trans} {stage_change}")
 
 
 if __name__ == "__main__":

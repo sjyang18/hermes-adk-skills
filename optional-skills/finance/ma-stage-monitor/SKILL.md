@@ -69,7 +69,7 @@ cronjob_manage action=create prompt="Run MA stage monitor daily after market clo
   command="python /path/to/check_ma_stages.py --config /path/to/config.yaml --output json"
 ```
 
-The script writes `state.json` to the configured `state_dir` (~/.ma-stage-monitor by default) to cache yesterday's stage and avoid redundant API calls on same-day re-runs.
+The script writes `state.json` to the configured `state_dir` (`~/.ma-stage-monitor` by default). In `--notify-only` mode it compares the latest stage with persisted state, initializes new tickers silently, and never repeats an alert for the same trading date. Add `--silent-if-none` for script-only schedulers where empty stdout suppresses delivery.
 
 ## Config File (config.yaml)
 
@@ -104,10 +104,10 @@ JSON format includes full details for programmatic consumption.
 
 ## Procedure
 
-1. Copy `config.example.yaml` to `config.yaml` and edit tickers
-2. Install deps: `pip install yfinance pandas pyyaml`
-3. Run: `python scripts/check_ma_stages.py --config config.yaml`
-4. (Optional) Schedule via your platform's cron/task scheduler
+1. Copy `config.example.yaml` to `config.yaml` and edit tickers.
+2. Install dependencies with `pip install yfinance pandas pyyaml`.
+3. Initialize state with `python scripts/check_ma_stages.py --config config.yaml --notify-only --silent-if-none`; the first run records a baseline without transition alerts.
+4. Schedule that same command after market close. Deliver stdout verbatim; empty stdout means no notification.
 
 ## Pitfalls
 
