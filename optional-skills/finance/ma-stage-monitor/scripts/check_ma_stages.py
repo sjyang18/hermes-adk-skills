@@ -38,11 +38,11 @@ STAGE_RANKS = {
 
 STAGE_NAMES = {
     "sml": "Stage 1: Strong Uptrend (5>20>40)",
-    "msl": "Stage 2: Early Rebound (20>5>40)",
-    "mls": "Stage 3: Bull Breakout (20>40>5)",
-    "lms": "Stage 4: Extended/Distribution (40>20>5)",
-    "lsm": "Stage 5: Reversal Down (40>5>20)",
-    "slm": "Stage 6: Capitulation (5>40>20)",
+    "msl": "Stage 2: Pullback / Early Consolidation (20>5>40)",
+    "mls": "Stage 3: Base Build / Mid-term Flattening (20>40>5)",
+    "lms": "Stage 4: Downtrend / Bear Alignment (40>20>5)",
+    "lsm": "Stage 5: Capitulation / Washout (40>5>20)",
+    "slm": "Stage 6: Distribution / Top Formation (5>40>20)",
 }
 
 

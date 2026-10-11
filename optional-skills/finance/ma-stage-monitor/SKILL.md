@@ -21,12 +21,12 @@ Uses the rank convention where **s=5-day MA, m=20-day MA, l=40-day MA** and stag
 
 | Stage | Code | Rank Order | Interpretation |
 |-------|------|------------|----------------|
-| 1 | sml | s > m > l | Strong uptrend (5 > 20 > 40) |
-| 2 | msl | m > s > l | Early rebound (20 > 5 > 40) |
-| 3 | mls | m > l > s | Bull breakout (20 > 40 > 5) |
-| 4 | lms | l > m > s | Extended/distribution (40 > 20 > 5) |
-| 5 | lsm | l > s > m | Reversal down (40 > 5 > 20) |
-| 6 | slm | s > l > m | Capitulation (5 > 40 > 20) |
+| 1 | sml | s > m > l | Strong Uptrend / Trend confirmed — 5 > 20 > 40 |
+| 2 | msl | m > s > l | Pullback / Early Consolidation — 20 > 5 > 40 |
+| 3 | mls | m > l > s | Base Build / Mid-term Flattening — 20 > 40 > 5 |
+| 4 | lms | l > m > s | Downtrend / Bear Alignment — 40 > 20 > 5 |
+| 5 | lsm | l > s > m | Capitulation / Washout — 40 > 5 > 20 |
+| 6 | slm | s > l > m | Distribution / Top Formation — 5 > 40 > 20 |
 
 ## When to Use
 
@@ -94,9 +94,9 @@ output_format: "table"
 
 Table format (default):
 
-```
+``` 
 Ticker   Date         Stage  Name                              MA5     MA20     MA40   Prev   Trans
-MSFT     2025-01-15   mls    Stage 3: Bull Breakout (20>40>5)  420.15  410.20   395.10 msl    ✓
+MSFT     2025-01-15   mls    Stage 3: Base Build / Mid-term Flattening (20>40>5)  420.15  410.20   395.10 msl    ✓
 AMZN     2025-01-15   sml    Stage 1: Strong Uptrend (5>20>40) 180.50  175.30   170.10 sml
 ```
 
