@@ -41,8 +41,8 @@ STAGE_NAMES = {
     "msl": "Stage 2: Pullback / Early Consolidation (20>5>40)",
     "mls": "Stage 3: Base Build / Mid-term Flattening (20>40>5)",
     "lms": "Stage 4: Downtrend / Bear Alignment (40>20>5)",
-    "lsm": "Stage 5: Capitulation / Washout (40>5>20)",
-    "slm": "Stage 6: Distribution / Top Formation (5>40>20)",
+    "lsm": "Stage 5: Rebound from Downtrend (40>5>20)",
+    "slm": "Stage 6: Down to Up Trend Transition (5>40>20)",
 }
 
 

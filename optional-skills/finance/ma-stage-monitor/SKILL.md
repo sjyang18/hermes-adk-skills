@@ -25,8 +25,8 @@ Uses the rank convention where **s=5-day MA, m=20-day MA, l=40-day MA** and stag
 | 2 | msl | m > s > l | Pullback / Early Consolidation — 20 > 5 > 40 |
 | 3 | mls | m > l > s | Base Build / Mid-term Flattening — 20 > 40 > 5 |
 | 4 | lms | l > m > s | Downtrend / Bear Alignment — 40 > 20 > 5 |
-| 5 | lsm | l > s > m | Capitulation / Washout — 40 > 5 > 20 |
-| 6 | slm | s > l > m | Distribution / Top Formation — 5 > 40 > 20 |
+| 5 | lsm | l > s > m | Rebound from Downtrend — 40 > 5 > 20 |
+| 6 | slm | s > l > m | Down to Up Trend Transition — 5 > 40 > 20 |
 
 ## When to Use
 
